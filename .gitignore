@@ -3,4 +3,6 @@ __pycache__/
 .env
 *.pyc
 .DS_Store
-data/raw_csvs/
+data/*.csv
+*.p8
+*.pub

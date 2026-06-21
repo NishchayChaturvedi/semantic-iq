@@ -1,0 +1,10 @@
+# SemanticIQ — Python dependencies
+# Add to each section as we reach that build step.
+
+# ── Step 1: data generation & Snowflake load ──────────────────────────────────
+pandas>=2.2
+numpy>=1.26
+faker>=25.0
+snowflake-connector-python>=3.10
+python-dotenv>=1.0
+cryptography>=42.0      # required for Snowflake key-pair auth
