@@ -1,6 +1,34 @@
 version: 2
 
 models:
+  - name: dim_account_hierarchy
+    description: >
+      Flattened ancestor table. Grain: one row per (account_id, ancestor_id) pair.
+      Built from dim_accounts WHERE is_current=TRUE — current org structure only.
+      Historical hierarchy not tracked (bi-temporal Future Consideration).
+      Includes synthetic UNKNOWN ancestor rows for the four accounts with
+      deliberately NULLed parent_account_id (ACC-0026/0034/0048/0063, all L1 band).
+      Integrity guarded by tests/assert_orphaned_accounts_have_unknown_ancestor.sql.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, ancestor_id]
+    columns:
+      - name: account_id
+        tests: [not_null]
+      - name: ancestor_id
+        tests: [not_null]
+      - name: depth
+        tests: [not_null]
+      - name: is_self
+        tests: [not_null]
+      - name: is_root
+        tests: [not_null]
+      - name: path_string
+        tests: [not_null]
+      - name: full_path_string
+        description: Complete root-to-leaf path, repeated on every row for the same account_id.
+        tests: [not_null]
+
   - name: dim_date
     description: >
       Calendar dimension, 2021-01-01 through 2025-12-31. Grain: one row per day.
@@ -106,6 +134,31 @@ models:
         description: COALESCE(effective_to, '9999-12-31'). Always non-null.
         tests: [not_null]
       - name: is_active
+        tests: [not_null]
+
+  - name: dim_fx_rates_filled
+    description: >
+      dim_fx_rates with the three known gap dates forward-filled using the
+      prior day's SPOT rate (LAST_VALUE IGNORE NULLS).
+      Gap dates: GBP 2022-08-29, EUR 2023-03-14, GBP 2024-01-02.
+      is_gap_filled = TRUE flags synthetic rows for audit visibility.
+      Does NOT perform FX conversion — conversion stays in saas_revenue_model
+      metric definitions (Decision Record 6, ARCHITECTURE.md).
+      Integrity guarded by tests/assert_fx_exactly_three_gaps_filled.sql.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [currency, rate_date]
+    columns:
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['GBP', 'EUR']
+      - name: rate_date
+        tests: [not_null]
+      - name: rate
+        tests: [not_null]
+      - name: is_gap_filled
         tests: [not_null]
 
   - name: dim_fx_rates
