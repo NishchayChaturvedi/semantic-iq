@@ -5,10 +5,10 @@ Jan 2022 – Dec 2024 | 150 accounts | ~40 active API keys at any time
 Outputs 9 raw CSV files to the data/ directory.
 
 Deliberate messiness (per design.md §3):
-  - NULL parent_account_id on accounts {25, 33, 47, 62} that logically should have a parent
-  - SCD2 v2 rows for accounts {5, 12, 23} have _loaded_at = valid_from + 2 days (backdated)
+  - NULL parent_account_id on ACC-0025, ACC-0033, ACC-0047, ACC-0062 (logically should have a parent)
+  - SCD2 change-event rows for ACC-0005, ACC-0012, ACC-0023 have _loaded_at = valid_from + 2 days
   - First 7 API keys are reassigned between accounts mid-period
-  - 3 FX rate gaps: (GBP, 2022-08-29), (EUR, 2023-03-14), (GBP, 2024-01-02) — no spot rate
+  - 3 FX spot-rate gaps: (GBP, 2022-08-29), (EUR, 2023-03-14), (GBP, 2024-01-02)
   - Ragged hierarchy depth 0–4 (uneven by design, not by accident)
 """
 
@@ -49,7 +49,12 @@ PRODUCTS_META = {
 }
 
 # Messiness constants — named and documented
+# NULL_PARENT_IDS: account numbers whose parent_account_id is deliberately NULL
+#   → account_ids: ACC-0025, ACC-0033, ACC-0047, ACC-0062
 NULL_PARENT_IDS    = {25, 33, 47, 62}
+# BACKDATED_ACC_NUMS: SCD2 change-event rows loaded 2 days after valid_from
+#   → account_ids: ACC-0005, ACC-0012, ACC-0023
+#   Verify: SELECT * FROM RAW.ACCOUNTS WHERE ACCOUNT_ID IN ('ACC-0005','ACC-0012','ACC-0023') ORDER BY ACCOUNT_ID, VALID_FROM;
 BACKDATED_ACC_NUMS = {5, 12, 23}
 N_REASSIGNED_KEYS  = 7
 FX_GAPS            = {
