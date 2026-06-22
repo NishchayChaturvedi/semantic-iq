@@ -36,6 +36,25 @@ models:
       - name: is_reassigned
         tests: [not_null]
 
+  - name: dim_fx_rates
+    description: >
+      Daily USD conversion factors. Grain: one row per (currency, rate_date).
+      No USD row — USD facts need no lookup. Three deliberate gaps (GBP 2022-08-29,
+      EUR 2023-03-14, GBP 2024-01-02) are preserved; semantic view handles them.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [currency, rate_date]
+    columns:
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['GBP', 'EUR']
+      - name: rate_date
+        tests: [not_null]
+      - name: rate
+        tests: [not_null]
+
   - name: dim_accounts
     description: >
       SCD2 account dimension. Grain: one row per account_key (surrogate).
