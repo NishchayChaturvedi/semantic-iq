@@ -36,6 +36,33 @@ models:
       - name: is_reassigned
         tests: [not_null]
 
+  - name: bridge_account_products
+    description: >
+      Time-ranged many-to-many bridge between accounts and products.
+      Grain: one row per (account_id, product_id, effective_from).
+      account_key is NOT resolved at build time — a product assignment can span
+      multiple SCD2 account versions; fact queries align the bridge range with
+      dim_accounts at query time using the event date.
+      effective_to_effective uses 9999-12-31 for active assignments.
+      discount_pct and is_bundled are relationship-level attributes.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, product_id, effective_from]
+    columns:
+      - name: bridge_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: effective_from
+        tests: [not_null]
+      - name: effective_to_effective
+        description: COALESCE(effective_to, '9999-12-31'). Always non-null.
+        tests: [not_null]
+      - name: is_active
+        tests: [not_null]
+
   - name: dim_fx_rates
     description: >
       Daily USD conversion factors. Grain: one row per (currency, rate_date).
