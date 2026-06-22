@@ -43,3 +43,36 @@ models:
           (ACC-0005, ACC-0012, ACC-0023) where the SCD2 change event was
           logged 2 days after the effective date — deliberate messiness.
         tests: [not_null]
+
+  - name: fact_subscriptions
+    description: >
+      Monthly recurring subscription revenue. Grain: one row per subscription_id
+      (account_id + product_id + billing_month).
+      account_key is the SCD2 surrogate resolved at build time — links to the
+      dim_accounts version active during billing_month, enabling historical
+      segment attribution (as-reported) vs current-view in the semantic layer.
+      mrr_amount is in contract_currency; FX conversion is the semantic view's job.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, product_id, billing_month]
+    columns:
+      - name: subscription_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: account_key
+        description: SCD2 surrogate — dim_accounts version active at billing_month.
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: billing_month
+        tests: [not_null]
+      - name: mrr_amount
+        tests: [not_null]
+      - name: arr_amount
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
