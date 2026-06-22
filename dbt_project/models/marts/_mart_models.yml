@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: dim_accounts
+    description: >
+      SCD2 account dimension. Grain: one row per account_key (surrogate).
+      valid_to_effective uses 9999-12-31 sentinel for current rows to simplify
+      range-join syntax in facts. parent_account_id is NULL for root accounts
+      and for the four accounts with deliberately missing parents — Unknown
+      member strategy is handled in the semantic view layer.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, valid_from]
+    columns:
+      - name: account_key
+        description: SCD2 surrogate key (integer sequence, unique per version).
+        tests: [unique, not_null]
+      - name: account_id
+        description: Business key, stable across all SCD2 versions.
+        tests: [not_null]
+      - name: segment
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['SMB', 'Mid-Market', 'Enterprise']
+      - name: contract_currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
+      - name: valid_from
+        tests: [not_null]
+      - name: valid_to_effective
+        description: >
+          COALESCE(valid_to, '9999-12-31'). Always non-null. Use this column
+          for BETWEEN range joins rather than valid_to.
+        tests: [not_null]
+      - name: is_current
+        tests: [not_null]
+      - name: is_backdated
+        description: >
+          TRUE when loaded_at > source_updated_at. Flags the three accounts
+          (ACC-0005, ACC-0012, ACC-0023) where the SCD2 change event was
+          logged 2 days after the effective date — deliberate messiness.
+        tests: [not_null]
