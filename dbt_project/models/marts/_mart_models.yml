@@ -1,6 +1,41 @@
 version: 2
 
 models:
+  - name: dim_products
+    description: >
+      Static product catalogue. Grain: one row per product_id. No versioning.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: product_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['CORE', 'ADD_ON', 'MARKETPLACE']
+      - name: base_mrr_usd
+        tests: [not_null]
+
+  - name: dim_api_keys
+    description: >
+      API key assignments with light SCD2. Grain: one row per (api_key_id, assigned_at).
+      NOT unique on api_key_id — six keys have two rows due to mid-period reassignment.
+      revoked_at_effective uses 9999-12-31 sentinel for active keys.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [api_key_id, assigned_at]
+    columns:
+      - name: api_key_id
+        tests: [not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: assigned_at
+        tests: [not_null]
+      - name: revoked_at_effective
+        description: COALESCE(revoked_at, '9999-12-31'). Always non-null.
+        tests: [not_null]
+      - name: is_reassigned
+        tests: [not_null]
+
   - name: dim_accounts
     description: >
       SCD2 account dimension. Grain: one row per account_key (surrogate).
