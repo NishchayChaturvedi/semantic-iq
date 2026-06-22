@@ -1,6 +1,23 @@
 version: 2
 
 models:
+  - name: dim_date
+    description: >
+      Calendar dimension, 2021-01-01 through 2025-12-31. Grain: one row per day.
+      Used three times in saas_revenue_model with distinct aliases for role-playing:
+      billing_date, completion_date, created_date.
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+      - name: year
+        tests: [not_null]
+      - name: month
+        tests: [not_null]
+      - name: quarter
+        tests: [not_null]
+      - name: is_weekend
+        tests: [not_null]
+
   - name: dim_products
     description: >
       Static product catalogue. Grain: one row per product_id. No versioning.
