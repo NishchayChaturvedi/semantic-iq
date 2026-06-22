@@ -1,0 +1,21 @@
+name: semantic_iq
+version: '1.0.0'
+config-version: 2
+
+profile: semantic_iq
+
+model-paths:  ["models"]
+macro-paths:  ["macros"]
+test-paths:   ["tests"]
+seed-paths:   ["seeds"]
+
+require-dbt-version: [">=1.8.0", "<2.0.0"]
+
+models:
+  semantic_iq:
+    staging:
+      +materialized: view
+      +schema: STAGING
+    marts:
+      +materialized: table
+      +schema: MARTS

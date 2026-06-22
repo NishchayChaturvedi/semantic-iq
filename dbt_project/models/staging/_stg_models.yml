@@ -1,0 +1,198 @@
+version: 2
+
+models:
+  - name: stg_accounts
+    description: >
+      Typed and cleaned account dimension with SCD2 versioning.
+      Grain: one row per account_key (surrogate). Use account_id + is_current
+      for current state; account_id + valid_from/valid_to for point-in-time.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, valid_from]
+    columns:
+      - name: account_key
+        description: Surrogate SCD2 key (integer sequence).
+        tests: [unique, not_null]
+      - name: account_id
+        description: Business key (stable across SCD2 versions).
+        tests: [not_null]
+      - name: segment
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['SMB', 'Mid-Market', 'Enterprise']
+      - name: contract_currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
+      - name: valid_from
+        tests: [not_null]
+      - name: is_current
+        tests: [not_null]
+
+  - name: stg_products
+    description: >
+      Static product catalogue. Grain: one row per product_id.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: product_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['CORE', 'ADD_ON', 'MARKETPLACE']
+      - name: base_mrr_usd
+        tests: [not_null]
+
+  - name: stg_account_ownership
+    description: >
+      SCD2 sales rep assignments. Source of truth for row-level security.
+      Grain: one row per ownership_id.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, valid_from]
+    columns:
+      - name: ownership_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: owner_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['REP', 'REGIONAL_MANAGER', 'GLOBAL']
+      - name: region
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['North America', 'EMEA', 'APAC', 'LATAM']
+      - name: valid_from
+        tests: [not_null]
+
+  - name: stg_api_keys
+    description: >
+      API key assignments. NOT unique on api_key_id alone — six keys have two
+      rows each (reassigned mid-period). Grain: one row per (api_key_id, assigned_at).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [api_key_id, assigned_at]
+    columns:
+      - name: api_key_id
+        tests: [not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: assigned_at
+        tests: [not_null]
+
+  - name: stg_account_products
+    description: >
+      Many-to-many bridge between accounts and products.
+      Grain: one row per bridge_id.
+    columns:
+      - name: bridge_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+
+  - name: stg_fx_rates
+    description: >
+      FX rates (spot and contract) for GBP and EUR to USD.
+      Grain: one row per (rate_date, from_currency, to_currency, rate_type).
+      Three spot-rate gaps are deliberate — verified by design.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [rate_date, from_currency, to_currency, rate_type]
+    columns:
+      - name: rate_id
+        tests: [unique, not_null]
+      - name: rate_date
+        tests: [not_null]
+      - name: from_currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['GBP', 'EUR']
+      - name: to_currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD']
+      - name: rate_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['SPOT', 'CONTRACT']
+      - name: rate
+        tests: [not_null]
+
+  - name: stg_subscriptions
+    description: >
+      Monthly recurring subscription revenue per account-product.
+      Grain: one row per (account_id, product_id, billing_month).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, product_id, billing_month]
+    columns:
+      - name: subscription_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: billing_month
+        tests: [not_null]
+      - name: mrr_amount
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
+      - name: billing_type
+        tests:
+          - accepted_values:
+              values: ['MONTHLY', 'ANNUAL']
+
+  - name: stg_usage_daily
+    description: >
+      Daily API consumption per key. Account attribution follows the key's
+      assignment at time of usage — not the current assignment.
+      Grain: one row per usage_id.
+    columns:
+      - name: usage_id
+        tests: [unique, not_null]
+      - name: api_key_id
+        tests: [not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: usage_date
+        tests: [not_null]
+      - name: units_consumed
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
+
+  - name: stg_services_milestones
+    description: >
+      Irregular professional-services milestone revenue events.
+      Grain: one row per milestone_id.
+    columns:
+      - name: milestone_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: completed_date
+        tests: [not_null]
+      - name: revenue_amount
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']

@@ -1,0 +1,58 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw synthetic data for Meridian, loaded by data/load_to_snowflake.py.
+    database: SEMANTIC_IQ
+    schema: RAW
+    tables:
+      - name: accounts
+        description: >
+          Account dimension with pre-built SCD2 rows.
+          Grain: one row per account per change version (account_key).
+          Messiness: NULL parent_account_id on ACC-0025/0033/0047/0062;
+          _loaded_at = valid_from + 2 days on ACC-0005/0012/0023.
+
+      - name: products
+        description: >
+          Static product catalogue. Seven products across CORE, ADD_ON, MARKETPLACE types.
+          Grain: one row per product_id.
+
+      - name: account_ownership
+        description: >
+          SCD2 owner (sales rep) assignments per account. Source of truth for
+          row-level security. Grain: one row per ownership_id.
+
+      - name: api_keys
+        description: >
+          API key assignments with light SCD2. Six keys are deliberately reassigned
+          to a different account mid-period (conformance join stress-test).
+          Grain: one row per api_key_id per assignment period.
+
+      - name: account_products
+        description: >
+          Many-to-many bridge between accounts and products, with discount and
+          bundling metadata. Grain: one row per bridge_id.
+
+      - name: fx_rates
+        description: >
+          Daily spot rates and quarterly contract rates for GBP→USD and EUR→USD.
+          Three deliberate spot-rate gaps force fallback logic.
+          Grain: one row per (rate_date, from_currency, to_currency, rate_type).
+
+      - name: subscriptions
+        description: >
+          Monthly recurring subscription revenue per account-product pair.
+          Amounts stored in the account's contract_currency.
+          Grain: one row per subscription_id (account + product + billing_month).
+
+      - name: usage_daily
+        description: >
+          Daily API consumption per key. Account attribution reflects the key's
+          assignment at time of usage (not current assignment).
+          Grain: one row per usage_id (api_key + date).
+
+      - name: services_milestones
+        description: >
+          Irregular professional-services milestone revenue. Enterprise and
+          Mid-Market accounts only. Grain: one row per milestone_id.

@@ -4,5 +4,8 @@ __pycache__/
 *.pyc
 .DS_Store
 data/*.csv
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
 *.p8
 *.pub
