@@ -77,6 +77,32 @@ models:
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
 
+  - name: fact_services_milestones
+    description: >
+      Professional services milestone revenue events. Grain: one row per milestone_id.
+      No fixed calendar grain — completed_date is irregular.
+      account_key resolved at build time via most-recent-version join on completed_date.
+      A NULL account_key here is a hard data error (unlike fact_usage_daily where
+      post-churn usage is an expected edge case).
+      revenue_amount stored in contract_currency; FX conversion in semantic view.
+    columns:
+      - name: milestone_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: account_key
+        description: SCD2 surrogate — dim_accounts version active on completed_date.
+        tests: [not_null]
+      - name: completed_date
+        tests: [not_null]
+      - name: revenue_amount
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
+
   - name: fact_usage_daily
     description: >
       Daily API consumption at API-key + day grain — the finest grain in the project.
