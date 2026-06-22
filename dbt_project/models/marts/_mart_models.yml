@@ -76,3 +76,37 @@ models:
           - not_null
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
+
+  - name: fact_usage_daily
+    description: >
+      Daily API consumption at API-key + day grain — the finest grain in the project.
+      account_id reflects the account that held the key on usage_date (not current).
+      account_key is the SCD2 surrogate from dim_accounts active on usage_date.
+      daily_amount = units_consumed * unit_rate, in contract_currency.
+      is_reassigned flags usage rows from the 6 keys reassigned mid-period,
+      making the conformance problem visible in the mart.
+      Conformance integrity guarded by tests/assert_usage_account_matches_key_assignment.sql.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [api_key_id, usage_date]
+    columns:
+      - name: usage_id
+        tests: [unique, not_null]
+      - name: api_key_id
+        tests: [not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: account_key
+        description: SCD2 surrogate — dim_accounts version active on usage_date.
+        tests: [not_null]
+      - name: usage_date
+        tests: [not_null]
+      - name: units_consumed
+        tests: [not_null]
+      - name: daily_amount
+        tests: [not_null]
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'GBP', 'EUR']
