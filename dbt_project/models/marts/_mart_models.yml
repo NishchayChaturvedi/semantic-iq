@@ -36,6 +36,34 @@ models:
       - name: is_reassigned
         tests: [not_null]
 
+  - name: dim_account_ownership
+    description: >
+      Time-ranged ownership dimension. Grain: one row per (account_id, valid_from).
+      An account has exactly one owner at a time — the compound grain test enforces this.
+      Source of truth for row-level security (rep → region mapping).
+      valid_to_effective uses 9999-12-31 sentinel for current owner rows.
+      Overlap integrity guarded by tests/assert_no_ownership_overlaps.sql — an overlap
+      would silently break RLS joins downstream.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [account_id, valid_from]
+    columns:
+      - name: ownership_id
+        tests: [unique, not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: owner_name
+        tests: [not_null]
+      - name: region
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+      - name: valid_to_effective
+        description: COALESCE(valid_to, '9999-12-31'). Always non-null.
+        tests: [not_null]
+      - name: is_current
+        tests: [not_null]
+
   - name: bridge_account_products
     description: >
       Time-ranged many-to-many bridge between accounts and products.
