@@ -86,3 +86,9 @@ FX conversion was designed as query-time semantic layer logic per DR3 — forced
 **Implication:** If exchange rates are updated in `dim_fx_rates_filled`, `fact_subscriptions` must be re-run to refresh USD amounts. The semantic view does not pick up rate changes automatically.
 
 ---
+
+## Guiding Constraint — Snowflake Semantic View METRICS Clause Is Single-Table Only
+
+Snowflake Semantic View METRICS clause is single-table only — no cross-table column references, no cross-table arithmetic, no window functions. Any computation requiring multiple tables must be pre-computed at dbt build time. This constraint affected `active_mrr` (Complexity 2), `mrr_amount_usd`/`arr_amount_usd` (Complexity 3), and rules out true NRR as a semantic view metric entirely.
+
+---
