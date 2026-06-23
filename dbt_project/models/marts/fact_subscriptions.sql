@@ -20,10 +20,14 @@ SELECT
     s.currency,
     s.billing_type,
     s.status,
-    s.created_at
+    s.created_at,
+    c.account_id IS NOT NULL            AS is_active_account
 
 FROM {{ ref('stg_subscriptions') }} s
 
 LEFT JOIN {{ ref('dim_accounts') }} d
     ON  s.account_id    = d.account_id
     AND s.billing_month BETWEEN d.valid_from AND d.valid_to_effective
+
+LEFT JOIN {{ ref('dim_accounts_current') }} c
+    ON  s.account_id    = c.account_id

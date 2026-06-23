@@ -255,6 +255,14 @@ models:
           - not_null
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
+      - name: is_active_account
+        description: >
+          TRUE when the account still exists as a current record in dim_accounts_current
+          (i.e. is_current = TRUE in dim_accounts). Computed at dbt build time — reflects
+          account status as of the last dbt run. Used as the single-table filter for
+          active_mrr in saas_revenue_model (cross-table CASE expressions are not
+          supported in Snowflake Semantic View METRICS clauses).
+        tests: [not_null]
 
   - name: fact_services_milestones
     description: >
