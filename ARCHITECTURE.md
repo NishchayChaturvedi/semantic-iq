@@ -72,3 +72,17 @@ Metric expressions referencing columns from a joined dimension table (e.g., `CAS
 Resolution: pre-compute the boolean flag at dbt build time. `is_active_account` is computed in `fact_subscriptions` as `c.account_id IS NOT NULL` from a LEFT JOIN to `dim_accounts_current`. The semantic view metric then uses the single-table expression `CASE WHEN fact_subscriptions.is_active_account THEN ...`. This means `is_active_account` reflects account status as of the last dbt run, not at query time — a known and accepted approximation for the NRR showcase.
 
 ---
+
+## Decision Record 5 — FX Conversion: Intended Query-Time, Forced to dbt (Complexity 3)
+
+**Intent per DR3:** FX conversion logic (amount × rate) was designed to live in the semantic view METRICS clause, keeping the mart layer free of business logic and enabling true query-time currency conversion with up-to-date rates.
+
+**Platform constraint:** Cross-table column references in METRICS are rejected (confirmed by Probe 3 — `SUM(fact_subscriptions.mrr_amount * dim_fx_rates_filled.rate)` fails with "invalid identifier 'DIM_FX_RATES_FILLED.RATE'"). This is the same constraint documented in DR4 for `active_mrr`. Compound PRIMARY KEY and multi-column RELATIONSHIPS both work (Probes 1 and 2 passed) — the blocker is exclusively the METRICS expression scope.
+
+**Resolution:** `mrr_amount_usd` and `arr_amount_usd` are pre-computed in `fact_subscriptions` at dbt build time via `LEFT JOIN dim_fx_rates_filled ON (currency, billing_month)`. USD rows use `COALESCE(rate, 1.0)` passthrough. Semantic view metrics then use single-table `SUM(fact_subscriptions.mrr_amount_usd)`.
+
+FX conversion was designed as query-time semantic layer logic per DR3 — forced to dbt pre-computation due to Snowflake METRICS clause rejecting cross-table column references. Same resolution pattern as `active_mrr` in Complexity 2. DR3 intent is preserved in documentation; implementation is pragmatically in the mart layer.
+
+**Implication:** If exchange rates are updated in `dim_fx_rates_filled`, `fact_subscriptions` must be re-run to refresh USD amounts. The semantic view does not pick up rate changes automatically.
+
+---

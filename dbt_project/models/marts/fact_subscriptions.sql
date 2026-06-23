@@ -16,12 +16,14 @@ SELECT
     s.product_id,
     s.billing_month,
     s.mrr_amount,
-    s.mrr_amount * 12                   AS arr_amount,
+    s.mrr_amount * 12                        AS arr_amount,
+    s.mrr_amount * COALESCE(fx.rate, 1.0)    AS mrr_amount_usd,
+    s.mrr_amount * 12 * COALESCE(fx.rate, 1.0) AS arr_amount_usd,
     s.currency,
     s.billing_type,
     s.status,
     s.created_at,
-    c.account_id IS NOT NULL            AS is_active_account
+    c.account_id IS NOT NULL                 AS is_active_account
 
 FROM {{ ref('stg_subscriptions') }} s
 
@@ -31,3 +33,7 @@ LEFT JOIN {{ ref('dim_accounts') }} d
 
 LEFT JOIN {{ ref('dim_accounts_current') }} c
     ON  s.account_id    = c.account_id
+
+LEFT JOIN {{ ref('dim_fx_rates_filled') }} fx
+    ON  s.currency      = fx.currency
+    AND s.billing_month = fx.rate_date

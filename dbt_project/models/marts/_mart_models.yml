@@ -255,6 +255,17 @@ models:
           - not_null
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
+      - name: mrr_amount_usd
+        description: >
+          mrr_amount converted to USD at the billing_month spot rate from dim_fx_rates_filled.
+          USD rows use COALESCE(rate, 1.0) passthrough — no rate row exists for USD.
+          Computed at dbt build time because cross-table multiplication is rejected in
+          Snowflake Semantic View METRICS clauses (see ARCHITECTURE.md DR4/DR5).
+        tests: [not_null]
+      - name: arr_amount_usd
+        description: >
+          arr_amount converted to USD. mrr_amount_usd * 12.
+        tests: [not_null]
       - name: is_active_account
         description: >
           TRUE when the account still exists as a current record in dim_accounts_current
