@@ -5,6 +5,20 @@ Each record captures: the decision, the alternatives rejected, and the reasoning
 
 ---
 
+## Complexity Map
+
+| C# | Name | What It Solves | Key Mart Object(s) | DR | Status |
+|---|---|---|---|---|---|
+| 1 | SCD Type 2 + historical metric recalculation | Two SCD2 paths expose segment at billing time (`dim_accounts` via `account_key`) and today's segment (`dim_accounts_current` via `account_id`) from one fact table | `dim_accounts`, `dim_accounts_current` | DR1 | LIVE |
+| 2 | Non-additive & semi-additive metrics | `COUNT DISTINCT` semi-additivity over time and cross-table `CASE WHEN` in METRICS both require dbt pre-computation; `is_active_account` pre-computed as single-table boolean flag | `fact_subscriptions` | DR4 | LIVE |
+| 3 | Role-playing dimensions + many-to-many | Same physical `dim_date` cannot appear twice in TABLES; four thin dbt role-view pass-throughs resolve it without data duplication | `dim_date_billing`, `dim_date_created`, `dim_date_milestone`, `dim_date_usage` | DR6 | LIVE |
+| 4 | Ragged / variable-depth hierarchies | Bridge fan-out cannot be the dim side of a RELATIONSHIP; pre-aggregated `fact_hierarchy_rollup` resolves the fan-out in dbt at `(ancestor_id, billing_month)` grain | `fact_hierarchy_rollup`, `dim_account_hierarchy` | DR8 | LIVE |
+| 5 | Multi-grain fact integration + non-conformed grain | Three facts at incompatible grains share `dim_accounts`; daily/monthly temporal mismatch governed by four distinct date-role axes rather than a shared time spine | `fact_services_milestones`, `fact_usage_daily` | DR7 | LIVE |
+| 6 | Multi-currency conversion timing | Cross-table multiplication rejected in METRICS; USD amounts pre-computed in dbt via `LEFT JOIN dim_fx_rates_filled`; gap-filling (data quality) kept separate from conversion (business logic) | `dim_fx_rates_filled`, `fact_subscriptions` (usd cols) | DR3, DR5 | LIVE |
+| 7 | Row-level security / multi-tenant governance | RAP cannot attach to a Semantic View (metadata object); `SEMANTIC_LAYER` secure view intermediary with `CURRENT_ROLE()` → region mapping enforces regional filtering with explicit safe-fail | `SEMANTIC_LAYER.FACT_*` (secure views), `rap_account_region` | DR9 | LIVE |
+
+---
+
 ## Decision Record 1 — Snowflake Semantic View Design
 
 **Decision:** Use Snowflake Semantic Views as the governed semantic layer for `saas_revenue_model`.
