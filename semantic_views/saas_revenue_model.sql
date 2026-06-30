@@ -19,6 +19,16 @@
 --   Four separate dbt views required (see ARCHITECTURE.md DR6).
 --   created_date pre-computed in fact_subscriptions as created_at::DATE.
 --
+-- Complexity 7 (LIVE): Row-level security
+--   RAP rap_account_region attached to four secure views in SEMANTIC_IQ.SEMANTIC_LAYER.
+--   Mart tables (SEMANTIC_IQ.MARTS.*) remain open — no policies attached.
+--   Secure views are transparent pass-throughs; the SV references them instead of marts.
+--   Probe confirmed: ALTER SEMANTIC VIEW ... ADD ROW ACCESS POLICY is unsupported
+--   (syntax error — SV is a metadata object, not a data object). See ARCHITECTURE.md DR9.
+--   Enforcement: CURRENT_ROLE() → rap_role_region_map → dim_account_ownership region join.
+--   Safe-fail: role absent from mapping → zero rows (not all rows).
+--   SYSTEM$GET_USER_CONTEXT unavailable on this account; role-based mapping used instead.
+--
 -- Complexity 4 (LIVE): Ragged hierarchy rollup
 --   fact_hierarchy_rollup: (ancestor_id, billing_month) grain (4,778 rows)
 --   Pre-computes fact_subscriptions × dim_account_hierarchy fan-out in dbt.
@@ -54,10 +64,10 @@
 CREATE OR REPLACE SEMANTIC VIEW SEMANTIC_IQ.MARTS.saas_revenue_model
 
   TABLES (
-    SEMANTIC_IQ.MARTS.FACT_SUBSCRIPTIONS,
-    SEMANTIC_IQ.MARTS.FACT_SERVICES_MILESTONES,
-    SEMANTIC_IQ.MARTS.FACT_USAGE_DAILY,
-    SEMANTIC_IQ.MARTS.FACT_HIERARCHY_ROLLUP,
+    SEMANTIC_IQ.SEMANTIC_LAYER.FACT_SUBSCRIPTIONS,
+    SEMANTIC_IQ.SEMANTIC_LAYER.FACT_SERVICES_MILESTONES,
+    SEMANTIC_IQ.SEMANTIC_LAYER.FACT_USAGE_DAILY,
+    SEMANTIC_IQ.SEMANTIC_LAYER.FACT_HIERARCHY_ROLLUP,
     SEMANTIC_IQ.MARTS.DIM_ACCOUNTS          PRIMARY KEY (account_key),
     SEMANTIC_IQ.MARTS.DIM_ACCOUNTS_CURRENT  PRIMARY KEY (account_id),
     SEMANTIC_IQ.MARTS.DIM_DATE_BILLING      PRIMARY KEY (date_day),

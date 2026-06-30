@@ -129,6 +129,45 @@ FX conversion was designed as query-time semantic layer logic per DR3 — forced
 
 ---
 
+## Decision Record 9 — Row-Level Security: SV Metadata Constraint + Secure View Intermediary (Complexity 7)
+
+**Probe result: Semantic Views do not support RAP attachment.** `ALTER SEMANTIC VIEW ... ADD ROW ACCESS POLICY` fails with SQL compilation error 001003 `syntax error ... unexpected 'ADD'`. Snowflake Semantic Views are metadata objects (defining TABLES, RELATIONSHIPS, DIMENSIONS, METRICS); Row Access Policies require a data object (table or view) to attach to. There is no column in the SV's own schema to attach a policy to.
+
+**Platform constraint 2: `SYSTEM$GET_USER_CONTEXT` unavailable.** The planned session-context approach (set REGION per session, RAP reads it) is unsupported on this Snowflake account version. Resolution: role-based mapping via a fixture table `RAP_ROLE_REGION_MAP (snowflake_role, region)`. The session's `CURRENT_ROLE()` is looked up in this table to derive the rep's region. No per-session setup required — region is determined automatically at login.
+
+**Resolution: Secure view intermediary layer.** A `SEMANTIC_IQ.SEMANTIC_LAYER` schema holds four SECURE VIEWs — transparent `SELECT *` pass-throughs of the four MARTS fact tables. `rap_account_region` is attached to each view on the appropriate column (`account_id` for three facts, `ancestor_id` for `fact_hierarchy_rollup`). The `saas_revenue_model` SV references `SEMANTIC_LAYER.FACT_*` instead of `MARTS.FACT_*`. MARTS fact tables are untouched — no policies. Dimension tables (`DIM_ACCOUNTS`, `DIM_DATE_*`) are not row-filtered; account attributes are visible once the fact row passes the filter.
+
+**RAP function design.** The function `rap_account_region (p_account_id VARCHAR) → BOOLEAN` has two branches:
+1. `CURRENT_ROLE() IN ('SEMANTIC_IQ_GLOBAL_ROLE', 'SYSADMIN', 'ACCOUNTADMIN')` → TRUE (finance/admin bypass)
+2. EXISTS join of `DIM_ACCOUNT_OWNERSHIP × RAP_ROLE_REGION_MAP` filtered by `CURRENT_ROLE()` and `is_current = TRUE`
+
+The function runs under **owner (definer) rights** — SYSADMIN can query `DIM_ACCOUNT_OWNERSHIP` and `RAP_ROLE_REGION_MAP` regardless of the session role's grants. Session users need no SELECT on these tables.
+
+**Safe-fail confirmed.** A role absent from `RAP_ROLE_REGION_MAP` and not in the global bypass list returns FALSE for every row — zero rows visible, not all rows. Verified: `SEMANTIC_IQ_NOROLE` (test role with SELECT on the secure views but no mapping entry) returned `COUNT(DISTINCT account_id) = 0`.
+
+**Verification matrix results (all pass):**
+
+| Query | User | Role | Accounts | MRR |
+|---|---|---|---|---|
+| Q1 — MARTS direct (no RAP) | SYSADMIN | SYSADMIN | 150 | 8,602,548 |
+| Q2 — SEMANTIC_LAYER (finance) | SEMANTIC_IQ_FINANCE | GLOBAL_ROLE | 150 | 8,602,548 |
+| Q3 — SEMANTIC_LAYER (EMEA rep) | SEMANTIC_IQ_EMEA_REP | EMEA_ROLE | 50 | 3,213,166 |
+| Q4 — SEMANTIC_LAYER (no mapping) | SEMANTIC_IQ_NOROLE_USER | NOROLE | **0** | NULL |
+
+Q1 = Q2 proves the mart is open and the global bypass is transparent. Q3 proves regional filtering. Q4 is the safe-fail gate.
+
+**Ghost accounts: emergent governance behavior.** 16 accounts appear in `FACT_SUBSCRIPTIONS` but have no current ownership record in `DIM_ACCOUNT_OWNERSHIP`. These were not constructed as a deliberate RLS test case — they emerged from the data generator's churn simulation (accounts that churned may have lost their ownership assignment). Under the RAP: ghost accounts are visible to the finance bypass (Q2 count = Q1 count = 150) and invisible to ALL regional reps (no current owner → EXISTS = FALSE for every region value). This is correct governance behavior: orphaned/churned accounts roll up to finance, not to any rep's portfolio. The total rep-visible accounts (50 EMEA + 34 APAC + 26 LATAM + 24 North America = 134) confirm 16 ghost accounts are excluded from regional views.
+
+**Demo user lifecycle.** `SEMANTIC_IQ_EMEA_REP` and `SEMANTIC_IQ_FINANCE` are active for the Sigma showcase. Drop commands after showcase:
+```sql
+DROP USER SEMANTIC_IQ_EMEA_REP;
+DROP USER SEMANTIC_IQ_FINANCE;
+DROP ROLE SEMANTIC_IQ_EMEA_ROLE;
+DROP ROLE SEMANTIC_IQ_GLOBAL_ROLE;
+```
+
+---
+
 ## Guiding Constraint — Snowflake Semantic View METRICS Clause Is Single-Table Only
 
 Snowflake Semantic View METRICS clause is single-table only — no cross-table column references, no cross-table arithmetic, no window functions. Any computation requiring multiple tables must be pre-computed at dbt build time. This constraint affected `active_mrr` (Complexity 2), `mrr_amount_usd`/`arr_amount_usd` (Complexity 6), and rules out true NRR as a semantic view metric entirely.
