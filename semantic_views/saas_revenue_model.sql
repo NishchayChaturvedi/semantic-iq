@@ -10,14 +10,14 @@
 --   Semi-additive:  distinct_account_count (see ARCHITECTURE.md DR4)
 --   NRR component:  active_mrr (pre-computed is_active_account — see DR4)
 --
--- Complexity 3 (LIVE): Multi-currency USD normalisation
+-- Complexity 6 (LIVE): Multi-currency USD normalisation
 --   mrr_amount_usd / arr_amount_usd pre-computed in mart (see ARCHITECTURE.md DR5)
 --   Metrics: total_mrr_usd, total_arr_usd, active_mrr_usd
 --
--- Complexity 4 (LIVE): Role-playing date dimensions
+-- Complexity 3 (LIVE): Role-playing date dimensions
 --   dim_date_billing → billing_month (subscription billing calendar)
 --   dim_date_created → created_date  (subscription creation calendar)
---   dim_date_milestone → completed_date (activated in Complexity 7 with fact_services_milestones)
+--   dim_date_milestone → completed_date (activated in Complexity 5 with fact_services_milestones)
 --   Same physical table (dim_date) cannot appear in TABLES twice — duplicate alias error.
 --   Three separate dbt views required (see ARCHITECTURE.md DR6).
 --   created_date pre-computed in fact_subscriptions as created_at::DATE.
@@ -101,7 +101,7 @@ CREATE OR REPLACE SEMANTIC VIEW SEMANTIC_IQ.MARTS.saas_revenue_model
       AS SUM(CASE WHEN fact_subscriptions.is_active_account
                   THEN fact_subscriptions.mrr_amount ELSE 0 END),
 
-    -- USD-normalised metrics (Complexity 3)
+    -- USD-normalised metrics (Complexity 6)
     fact_subscriptions.total_mrr_usd          AS SUM(fact_subscriptions.mrr_amount_usd),
     fact_subscriptions.total_arr_usd          AS SUM(fact_subscriptions.arr_amount_usd),
     fact_subscriptions.active_mrr_usd
