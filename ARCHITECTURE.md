@@ -87,6 +87,20 @@ FX conversion was designed as query-time semantic layer logic per DR3 — forced
 
 ---
 
+## Decision Record 6 — Role-Playing Date Dimensions (Complexity 4)
+
+**Pattern:** `dim_date` serves three roles in `saas_revenue_model`: billing calendar (`billing_month`), creation calendar (`created_date`), and milestone calendar (`completed_date`, activated in Complexity 7). Each role requires a distinct logical name so Sigma can distinguish "MRR by billing month" from "subscriptions by cohort creation quarter."
+
+**Constraint confirmed by probe:** The Snowflake Semantic View TABLES clause rejects the same fully-qualified table name appearing twice — error 002027 "duplicate alias 'DIM_DATE'". No AS alias syntax exists in TABLES (DR1), so the alias is always derived from the object name. This means the same physical table cannot serve multiple roles within one semantic view.
+
+**Resolution:** Three thin dbt views — `dim_date_billing`, `dim_date_milestone`, `dim_date_created` — each defined as `SELECT * FROM dim_date`. Zero data duplication; each view is a transparent pass-through. Same pattern as `dim_accounts_current` in Complexity 1.
+
+**`created_date` pre-computation:** `fact_subscriptions.created_at` is a TIMESTAMP. RELATIONSHIPS requires an exact column name (no expression casting), so `created_at::DATE AS created_date` is pre-computed in the mart — consistent with the single-table-only constraint on DIMENSIONS (DR1) and the broader pattern of pre-computing join keys at dbt build time.
+
+**Deferred role:** `dim_date_milestone` is built but not yet wired into the semantic view. Its relationship (`fact_services_milestones (completed_date) REFERENCES dim_date_milestone (date_day)`) is added in Complexity 7 alongside `fact_services_milestones`.
+
+---
+
 ## Guiding Constraint — Snowflake Semantic View METRICS Clause Is Single-Table Only
 
 Snowflake Semantic View METRICS clause is single-table only — no cross-table column references, no cross-table arithmetic, no window functions. Any computation requiring multiple tables must be pre-computed at dbt build time. This constraint affected `active_mrr` (Complexity 2), `mrr_amount_usd`/`arr_amount_usd` (Complexity 3), and rules out true NRR as a semantic view metric entirely.

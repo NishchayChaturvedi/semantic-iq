@@ -255,6 +255,9 @@ models:
           - not_null
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
+      - name: created_date
+        description: created_at cast to DATE. Used as the join key for the dim_date_created role-playing relationship in saas_revenue_model.
+        tests: [not_null]
       - name: mrr_amount_usd
         description: >
           mrr_amount converted to USD at the billing_month spot rate from dim_fx_rates_filled.

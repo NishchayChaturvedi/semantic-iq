@@ -23,6 +23,7 @@ SELECT
     s.billing_type,
     s.status,
     s.created_at,
+    s.created_at::DATE                       AS created_date,
     c.account_id IS NOT NULL                 AS is_active_account
 
 FROM {{ ref('stg_subscriptions') }} s
