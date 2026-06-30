@@ -55,7 +55,8 @@ SELECT
     ud.usage_date,
     ud.units_consumed,
     ud.unit_rate,
-    ud.units_consumed * ud.unit_rate            AS daily_amount,
+    ud.units_consumed * ud.unit_rate                           AS daily_amount,
+    ud.units_consumed * ud.unit_rate * COALESCE(fx.rate, 1.0) AS daily_amount_usd,
     ud.currency,
     k.is_reassigned,
     ud.created_at
@@ -66,5 +67,9 @@ LEFT JOIN api_keys k
     ON  ud.api_key_id = k.api_key_id
     AND ud.usage_date BETWEEN k.assigned_at
                           AND COALESCE(k.revoked_at, '9999-12-31'::DATE)
+
+LEFT JOIN {{ ref('dim_fx_rates_filled') }} fx
+    ON  ud.currency   = fx.currency
+    AND ud.usage_date = fx.rate_date
 
 WHERE ud._rn = 1

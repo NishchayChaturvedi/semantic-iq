@@ -32,8 +32,9 @@ models:
   - name: dim_date
     description: >
       Calendar dimension, 2021-01-01 through 2025-12-31. Grain: one row per day.
-      Used three times in saas_revenue_model with distinct aliases for role-playing:
-      billing_date, completion_date, created_date.
+      Used four times in saas_revenue_model with distinct aliases for role-playing:
+      dim_date_billing (billing_month), dim_date_created (created_date),
+      dim_date_milestone (completed_date), dim_date_usage (usage_date).
     columns:
       - name: date_day
         tests: [unique, not_null]
@@ -298,6 +299,12 @@ models:
         tests: [not_null]
       - name: revenue_amount
         tests: [not_null]
+      - name: revenue_amount_usd
+        description: >
+          revenue_amount converted to USD at the completed_date spot rate from dim_fx_rates_filled.
+          USD rows use COALESCE(rate, 1.0) passthrough. Pre-computed at dbt build time —
+          same constraint as fact_subscriptions (see ARCHITECTURE.md DR5).
+        tests: [not_null]
       - name: currency
         tests:
           - not_null
@@ -331,6 +338,12 @@ models:
       - name: units_consumed
         tests: [not_null]
       - name: daily_amount
+        tests: [not_null]
+      - name: daily_amount_usd
+        description: >
+          daily_amount converted to USD at the usage_date spot rate from dim_fx_rates_filled.
+          USD rows use COALESCE(rate, 1.0) passthrough. Pre-computed at dbt build time —
+          same constraint as fact_subscriptions (see ARCHITECTURE.md DR5).
         tests: [not_null]
       - name: currency
         tests:

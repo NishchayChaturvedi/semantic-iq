@@ -101,6 +101,20 @@ FX conversion was designed as query-time semantic layer logic per DR3 — forced
 
 ---
 
+## Decision Record 7 — Multi-Grain Fact Integration and Non-Conformance (Complexity 5)
+
+**Facts integrated:** `fact_services_milestones` (milestone grain, irregular dates) and `fact_usage_daily` (API-key + day grain, 45,995 rows) added to `saas_revenue_model` alongside `fact_subscriptions` (account + month grain).
+
+**What works:** All three facts share `dim_accounts` via `account_key`, pre-resolved at dbt build time. Snowflake Semantic Views handle multi-fact configurations correctly — each fact registers its own RELATIONSHIPS, and `dim_accounts` serves as the conforming dimension across all three.
+
+**The non-conformance problem:** `fact_usage_daily` is at day grain; `fact_subscriptions` is at month grain. When a user slices both `total_usage_revenue` and `total_mrr` together by `dim_accounts.segment` in Sigma, the join through `dim_accounts` works correctly — but the metric values represent different time units. There is no semantic-layer-level guard against summing daily usage revenue and monthly subscription MRR into a combined "total revenue" figure without declaring a common time spine. This is a governance constraint enforced by documentation and BI-layer training, not a platform-level constraint.
+
+**Why `dim_date_usage` is kept separate from `dim_date_billing`:** A single shared date role would allow Sigma to implicitly treat billing month and usage date as interchangeable time axes. Four distinct role views (`dim_date_billing`, `dim_date_created`, `dim_date_milestone`, `dim_date_usage`) force BI consumers to actively choose a time axis — making the grain mismatch visible as a user experience rather than hiding it.
+
+**USD pre-computation extended:** `revenue_amount_usd` (milestones) and `daily_amount_usd` (usage) are pre-computed in their respective mart tables via `LEFT JOIN dim_fx_rates_filled`, same pattern as `fact_subscriptions`. See DR5.
+
+---
+
 ## Guiding Constraint — Snowflake Semantic View METRICS Clause Is Single-Table Only
 
 Snowflake Semantic View METRICS clause is single-table only — no cross-table column references, no cross-table arithmetic, no window functions. Any computation requiring multiple tables must be pre-computed at dbt build time. This constraint affected `active_mrr` (Complexity 2), `mrr_amount_usd`/`arr_amount_usd` (Complexity 6), and rules out true NRR as a semantic view metric entirely.

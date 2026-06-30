@@ -7,7 +7,9 @@
 -- genuine data problem (no plausible post-churn milestone), so the not_null
 -- test is a hard assertion, not an edge case to handle gracefully.
 --
--- revenue_amount stored in contract_currency — FX conversion in semantic view.
+-- revenue_amount stored in contract_currency; revenue_amount_usd pre-computed via
+-- LEFT JOIN to dim_fx_rates_filled (same pattern as fact_subscriptions — Snowflake
+-- Semantic View METRICS clause rejects cross-table column references, see ARCHITECTURE.md DR5).
 
 WITH milestones AS (
     SELECT * FROM {{ ref('stg_services_milestones') }}
@@ -40,15 +42,21 @@ milestones_with_dim AS (
 )
 
 SELECT
-    milestone_id,
-    account_id,
-    account_key,
-    project_name,
-    milestone_name,
-    completed_date,
-    revenue_amount,
-    currency,
-    created_at
+    mwd.milestone_id,
+    mwd.account_id,
+    mwd.account_key,
+    mwd.project_name,
+    mwd.milestone_name,
+    mwd.completed_date,
+    mwd.revenue_amount,
+    mwd.revenue_amount * COALESCE(fx.rate, 1.0)  AS revenue_amount_usd,
+    mwd.currency,
+    mwd.created_at
 
-FROM milestones_with_dim
-WHERE _rn = 1
+FROM milestones_with_dim mwd
+
+LEFT JOIN {{ ref('dim_fx_rates_filled') }} fx
+    ON  mwd.currency       = fx.currency
+    AND mwd.completed_date = fx.rate_date
+
+WHERE mwd._rn = 1

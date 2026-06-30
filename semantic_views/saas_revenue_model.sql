@@ -10,17 +10,28 @@
 --   Semi-additive:  distinct_account_count (see ARCHITECTURE.md DR4)
 --   NRR component:  active_mrr (pre-computed is_active_account — see DR4)
 --
+-- Complexity 3 (LIVE): Role-playing date dimensions
+--   dim_date_billing   → billing_month  (subscription billing calendar)
+--   dim_date_created   → created_date   (subscription creation calendar)
+--   dim_date_milestone → completed_date (milestone completion calendar)
+--   dim_date_usage     → usage_date     (API usage calendar)
+--   Same physical table (dim_date) cannot appear in TABLES twice — duplicate alias error.
+--   Four separate dbt views required (see ARCHITECTURE.md DR6).
+--   created_date pre-computed in fact_subscriptions as created_at::DATE.
+--
+-- Complexity 5 (LIVE): Multi-grain fact integration
+--   fact_services_milestones: milestone grain (107 rows, irregular dates)
+--   fact_usage_daily:         API-key + day grain (45,995 rows)
+--   Non-conformance: usage_date is daily; billing_month is monthly. Shared
+--   dim_accounts join works (both resolve account_key at build time) but
+--   temporal misalignment is a governance constraint, not a query-time guard.
+--   dim_date_usage kept distinct from dim_date_billing so Sigma exposes the
+--   two time axes as separate choices — making the grain mismatch visible.
+--
 -- Complexity 6 (LIVE): Multi-currency USD normalisation
 --   mrr_amount_usd / arr_amount_usd pre-computed in mart (see ARCHITECTURE.md DR5)
 --   Metrics: total_mrr_usd, total_arr_usd, active_mrr_usd
---
--- Complexity 3 (LIVE): Role-playing date dimensions
---   dim_date_billing → billing_month (subscription billing calendar)
---   dim_date_created → created_date  (subscription creation calendar)
---   dim_date_milestone → completed_date (activated in Complexity 5 with fact_services_milestones)
---   Same physical table (dim_date) cannot appear in TABLES twice — duplicate alias error.
---   Three separate dbt views required (see ARCHITECTURE.md DR6).
---   created_date pre-computed in fact_subscriptions as created_at::DATE.
+--   revenue_amount_usd, daily_amount_usd added for milestone + usage facts (same pattern)
 --
 -- Syntax rules (confirmed against Snowflake 10.21.x):
 --   TABLES:        fully qualified name + PRIMARY KEY (col[, col]) — compound PK works;
@@ -35,17 +46,30 @@ CREATE OR REPLACE SEMANTIC VIEW SEMANTIC_IQ.MARTS.saas_revenue_model
 
   TABLES (
     SEMANTIC_IQ.MARTS.FACT_SUBSCRIPTIONS,
+    SEMANTIC_IQ.MARTS.FACT_SERVICES_MILESTONES,
+    SEMANTIC_IQ.MARTS.FACT_USAGE_DAILY,
     SEMANTIC_IQ.MARTS.DIM_ACCOUNTS          PRIMARY KEY (account_key),
     SEMANTIC_IQ.MARTS.DIM_ACCOUNTS_CURRENT  PRIMARY KEY (account_id),
     SEMANTIC_IQ.MARTS.DIM_DATE_BILLING      PRIMARY KEY (date_day),
-    SEMANTIC_IQ.MARTS.DIM_DATE_CREATED      PRIMARY KEY (date_day)
+    SEMANTIC_IQ.MARTS.DIM_DATE_CREATED      PRIMARY KEY (date_day),
+    SEMANTIC_IQ.MARTS.DIM_DATE_MILESTONE    PRIMARY KEY (date_day),
+    SEMANTIC_IQ.MARTS.DIM_DATE_USAGE        PRIMARY KEY (date_day)
   )
 
   RELATIONSHIPS (
+    -- fact_subscriptions
     fact_subscriptions (account_key)   REFERENCES dim_accounts (account_key),
     fact_subscriptions (account_id)    REFERENCES dim_accounts_current (account_id),
     fact_subscriptions (billing_month) REFERENCES dim_date_billing (date_day),
-    fact_subscriptions (created_date)  REFERENCES dim_date_created (date_day)
+    fact_subscriptions (created_date)  REFERENCES dim_date_created (date_day),
+
+    -- fact_services_milestones
+    fact_services_milestones (account_key)    REFERENCES dim_accounts (account_key),
+    fact_services_milestones (completed_date) REFERENCES dim_date_milestone (date_day),
+
+    -- fact_usage_daily
+    fact_usage_daily (account_key) REFERENCES dim_accounts (account_key),
+    fact_usage_daily (usage_date)  REFERENCES dim_date_usage (date_day)
   )
 
   DIMENSIONS (
@@ -86,7 +110,37 @@ CREATE OR REPLACE SEMANTIC VIEW SEMANTIC_IQ.MARTS.saas_revenue_model
     dim_date_created.month       AS dim_date_created.month,
     dim_date_created.month_name  AS dim_date_created.month_name,
     dim_date_created.year_month  AS dim_date_created.year_month,
-    dim_date_created.is_weekend  AS dim_date_created.is_weekend
+    dim_date_created.is_weekend  AS dim_date_created.is_weekend,
+
+    -- Milestone date role (services milestone completion calendar)
+    dim_date_milestone.date_day    AS dim_date_milestone.date_day,
+    dim_date_milestone.year        AS dim_date_milestone.year,
+    dim_date_milestone.quarter     AS dim_date_milestone.quarter,
+    dim_date_milestone.month       AS dim_date_milestone.month,
+    dim_date_milestone.month_name  AS dim_date_milestone.month_name,
+    dim_date_milestone.year_month  AS dim_date_milestone.year_month,
+    dim_date_milestone.is_weekend  AS dim_date_milestone.is_weekend,
+
+    -- Usage date role (API usage calendar — distinct from billing to surface grain mismatch)
+    dim_date_usage.date_day    AS dim_date_usage.date_day,
+    dim_date_usage.year        AS dim_date_usage.year,
+    dim_date_usage.quarter     AS dim_date_usage.quarter,
+    dim_date_usage.month       AS dim_date_usage.month,
+    dim_date_usage.month_name  AS dim_date_usage.month_name,
+    dim_date_usage.year_month  AS dim_date_usage.year_month,
+    dim_date_usage.is_weekend  AS dim_date_usage.is_weekend,
+
+    -- Services milestones grain attributes
+    fact_services_milestones.milestone_id   AS fact_services_milestones.milestone_id,
+    fact_services_milestones.completed_date AS fact_services_milestones.completed_date,
+    fact_services_milestones.project_name   AS fact_services_milestones.project_name,
+    fact_services_milestones.milestone_name AS fact_services_milestones.milestone_name,
+
+    -- Usage daily grain attributes (api_key_id: non-conformed sub-account grain)
+    fact_usage_daily.usage_id      AS fact_usage_daily.usage_id,
+    fact_usage_daily.api_key_id    AS fact_usage_daily.api_key_id,
+    fact_usage_daily.usage_date    AS fact_usage_daily.usage_date,
+    fact_usage_daily.is_reassigned AS fact_usage_daily.is_reassigned
   )
 
   METRICS (
@@ -106,7 +160,23 @@ CREATE OR REPLACE SEMANTIC VIEW SEMANTIC_IQ.MARTS.saas_revenue_model
     fact_subscriptions.total_arr_usd          AS SUM(fact_subscriptions.arr_amount_usd),
     fact_subscriptions.active_mrr_usd
       AS SUM(CASE WHEN fact_subscriptions.is_active_account
-                  THEN fact_subscriptions.mrr_amount_usd ELSE 0 END)
+                  THEN fact_subscriptions.mrr_amount_usd ELSE 0 END),
+
+    -- Services milestones metrics (Complexity 5)
+    fact_services_milestones.total_services_revenue
+      AS SUM(fact_services_milestones.revenue_amount),
+    fact_services_milestones.total_services_revenue_usd
+      AS SUM(fact_services_milestones.revenue_amount_usd),
+    fact_services_milestones.milestone_count
+      AS COUNT(fact_services_milestones.milestone_id),
+
+    -- Usage daily metrics (Complexity 5)
+    fact_usage_daily.total_units_consumed
+      AS SUM(fact_usage_daily.units_consumed),
+    fact_usage_daily.total_usage_revenue
+      AS SUM(fact_usage_daily.daily_amount),
+    fact_usage_daily.total_usage_revenue_usd
+      AS SUM(fact_usage_daily.daily_amount_usd)
   )
 
 ;
