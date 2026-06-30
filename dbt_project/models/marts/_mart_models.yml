@@ -350,3 +350,39 @@ models:
           - not_null
           - accepted_values:
               values: ['USD', 'GBP', 'EUR']
+
+  - name: fact_hierarchy_rollup
+    description: >
+      Hierarchy-aware MRR/ARR rollup. Grain: one row per (ancestor_id, billing_month).
+      Pre-computes the fan-out join of fact_subscriptions × dim_account_hierarchy in dbt
+      so the semantic view sees a clean fact table rather than a bridge — see ARCHITECTURE.md DR8.
+      ancestor_id values are standard account_ids; 'UNKNOWN' is a synthetic placeholder for
+      the four accounts with deliberately missing parent_account_ids.
+      subsidiary_count semi-additivity: do NOT sum across billing_month — overcounts accounts
+      that appear in multiple months. Read at a single billing_month snapshot or use MAX.
+      Same governance pattern as distinct_account_count in fact_subscriptions (DR4).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [ancestor_id, billing_month]
+    columns:
+      - name: ancestor_id
+        tests: [not_null]
+      - name: billing_month
+        tests: [not_null]
+      - name: mrr_amount_with_subs
+        tests: [not_null]
+      - name: mrr_amount_usd_with_subs
+        tests: [not_null]
+      - name: arr_amount_with_subs
+        tests: [not_null]
+      - name: arr_amount_usd_with_subs
+        tests: [not_null]
+      - name: subsidiary_count
+        tests: [not_null]
+      - name: ancestor_depth
+        description: >
+          Depth of the ancestor account in the org hierarchy (0 = root, 4 = deepest leaf).
+          NULL for the 'UNKNOWN' synthetic placeholder — four orphaned accounts have no
+          real position in the tree (not_null test intentionally omitted).
+      - name: is_root_ancestor
+        tests: [not_null]

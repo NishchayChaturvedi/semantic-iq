@@ -115,6 +115,20 @@ FX conversion was designed as query-time semantic layer logic per DR3 — forced
 
 ---
 
+## Decision Record 8 — Ragged Hierarchy: Fan-Out Bridge Cannot Be the Dim Side (Complexity 4)
+
+**The problem:** `dim_account_hierarchy` is a fan-out bridge table (292 rows, 134 accounts — average 2.18 rows per `account_id`). Registering it in the SV TABLES clause with `PRIMARY KEY (account_id)` would violate uniqueness: `account_id` is not unique in this table. Registering with the correct compound `PRIMARY KEY (account_id, ancestor_id)` makes no single-column relationship from `fact_subscriptions (account_id)` resolvable to that PK. Either way, the bridge cannot be the dimension side of a RELATIONSHIP.
+
+**What "would" happen if it could be joined:** A flat `SUM(mrr_amount) GROUP BY segment` via a fact_subscriptions → dim_account_hierarchy join would multiply each subscription row by its ancestor count (up to 5× for the deepest accounts) before aggregating — silently inflating all subscription metrics in any query that traversed the hierarchy path. The correct rollup (`SUM(mrr_amount) GROUP BY ancestor_id`) works precisely because each subscription row contributes once per ancestor; the fan-out is the feature, not the bug — but only in the rollup context, not in flat queries.
+
+**Resolution:** Pre-compute the fan-out join in dbt as `fact_hierarchy_rollup` (grain: `ancestor_id × billing_month`, 4,778 rows). The semantic view sees a clean fact table with no bridge fan-out. `ancestor_id` relates to `dim_accounts_current (account_id)` for ancestor segment/industry; `billing_month` reuses `dim_date_billing` — confirmed that one dimension table can be referenced by multiple facts.
+
+**`subsidiary_count` semi-additivity:** `COUNT(DISTINCT account_id)` in `fact_hierarchy_rollup` is computed per `billing_month` snapshot. Do not sum `subsidiary_count` across months — an account appearing in multiple months is overcounted. Read at a single `billing_month` or use MAX. Same governance pattern as `distinct_account_count` on `fact_subscriptions` (DR4).
+
+**`UNKNOWN` ancestor sentinel:** Four accounts with deliberately NULLed `parent_account_id` resolve to an `UNKNOWN` synthetic ancestor in `dim_account_hierarchy`. These 36 rows in `fact_hierarchy_rollup` (UNKNOWN × 36 billing months) have `ancestor_depth = NULL` — no real position in the tree — and `is_root_ancestor = TRUE`. The `ancestor_id → dim_accounts_current` relationship returns NULL attributes for UNKNOWN, which is correct and expected.
+
+---
+
 ## Guiding Constraint — Snowflake Semantic View METRICS Clause Is Single-Table Only
 
 Snowflake Semantic View METRICS clause is single-table only — no cross-table column references, no cross-table arithmetic, no window functions. Any computation requiring multiple tables must be pre-computed at dbt build time. This constraint affected `active_mrr` (Complexity 2), `mrr_amount_usd`/`arr_amount_usd` (Complexity 6), and rules out true NRR as a semantic view metric entirely.
